@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VisionShelf Dashboard - Misplaced Book Detector</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <header class="app-header">
+    <h1>📊 VisionShelf Dashboard</h1>
+    <p class="subtitle">Compare scanned shelves against expected order</p>
+  </header>
+
+  <main class="container">
+
+    <!-- Shelf selector -->
+    <section class="card">
+      <label for="shelfSelect">Shelf</label>
+      <select id="shelfSelect">
+        <option value="">-- Select a shelf --</option>
+      </select>
+    </section>
+
+    <!-- Expected order editor -->
+    <section class="card">
+      <h2>Expected Order</h2>
+      <p class="hint">One book title per line, in the correct left-to-right shelf order.</p>
+      <textarea id="expectedOrderInput" rows="8" placeholder="Enter expected book titles, one per line..."></textarea>
+      <button id="saveExpectedBtn" class="btn btn-primary">💾 Save Expected Order</button>
+      <p id="saveStatus" class="status-msg"></p>
+    </section>
+
+    <!-- Latest scan info -->
+    <section class="card">
+      <h2>Latest Scan</h2>
+      <p id="lastScanTime" class="hint">No scan loaded yet.</p>
+    </section>
+
+    <!-- Comparison results -->
+    <section class="card">
+      <h2>Comparison Result</h2>
+      <div id="summaryBox" class="summary-box" hidden></div>
+      <table id="comparisonTable" class="comparison-table" hidden>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Expected</th>
+            <th>Detected</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="comparisonBody"></tbody>
+      </table>
+      <p id="noDataMsg" class="hint">Select a shelf with both an expected order and a scan to see results.</p>
+    </section>
+
+  </main>
+
+  <footer class="app-footer">
+    <p>VisionShelf Dashboard &mdash; reads live data from Firebase Realtime Database</p>
+  </footer>
+
+  <!-- Firebase compat SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
+  <script src="script.js"></script>
+</body>
+</html>

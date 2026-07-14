@@ -1,0 +1,181 @@
+/* ==========================================================
+   VisionShelf Dashboard — Stylesheet
+   ========================================================== */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  background: #f4f6f9;
+  color: #1f2937;
+}
+
+.app-header {
+  background: linear-gradient(135deg, #7c3aed, #4c1d95);
+  color: #fff;
+  padding: 24px 16px;
+  text-align: center;
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 1.8rem;
+}
+
+.subtitle {
+  margin: 4px 0 0;
+  font-size: 0.9rem;
+  opacity: 0.9;
+}
+
+.container {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.card h2 {
+  margin-top: 0;
+  font-size: 1.1rem;
+}
+
+label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 6px;
+  font-size: 0.9rem;
+}
+
+select,
+textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-family: inherit;
+}
+
+textarea {
+  resize: vertical;
+  margin-bottom: 10px;
+}
+
+.hint {
+  font-size: 0.85rem;
+  color: #6b7280;
+  margin: 4px 0 10px;
+}
+
+.btn {
+  padding: 10px 16px;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: #7c3aed;
+  color: #fff;
+}
+
+.btn:active {
+  transform: scale(0.98);
+}
+
+.status-msg {
+  font-size: 0.85rem;
+  margin: 8px 0 0;
+  min-height: 1.2em;
+}
+
+.status-msg.success {
+  color: #059669;
+}
+
+.status-msg.error {
+  color: #dc2626;
+}
+
+/* ---------- Summary box ---------- */
+.summary-box {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.summary-item {
+  flex: 1;
+  min-width: 100px;
+  text-align: center;
+  padding: 12px;
+  border-radius: 8px;
+  background: #f9fafb;
+}
+
+.summary-item .count {
+  display: block;
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+
+.summary-item .label {
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+/* ---------- Comparison table ---------- */
+.comparison-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.comparison-table th,
+.comparison-table td {
+  text-align: left;
+  padding: 8px 6px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.comparison-table th {
+  color: #6b7280;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+}
+
+.row-ok {
+  background: #f0fdf4;
+}
+
+.row-mismatch {
+  background: #fef2f2;
+}
+
+.status-ok {
+  color: #059669;
+  font-weight: 600;
+}
+
+.status-mismatch {
+  color: #dc2626;
+  font-weight: 600;
+}
+
+.app-footer {
+  text-align: center;
+  font-size: 0.8rem;
+  color: #9ca3af;
+  padding: 20px 16px 32px;
+}
