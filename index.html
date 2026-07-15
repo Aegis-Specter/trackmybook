@@ -1,71 +1,48 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>VisionShelf Dashboard - Misplaced Book Detector</title>
-  <link rel="stylesheet" href="style.css" />
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VisionShelf — Shelf Check</title>
+
+<link rel="stylesheet" href="style.css">
+
+<!-- Firebase (compat SDK — simplest for a static page, no build step) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 </head>
 <body>
+<div class="wrap">
 
-  <header class="app-header">
-    <h1>📊 VisionShelf Dashboard</h1>
-    <p class="subtitle">Compare scanned shelves against expected order</p>
+  <header>
+    <div class="eyebrow">VisionShelf</div>
+    <h1>Check the <em>order</em></h1>
+    <div class="sub">Type the books that should be on the shelf, in order, one per line. We'll match each one loosely against what's actually been scanned — a single distinctive word is enough — then flag anything missing entirely or sitting in the wrong spot.</div>
   </header>
 
-  <main class="container">
+  <!-- INPUT -->
+  <div class="card">
+    <h2>Expected order</h2>
+    <textarea id="orderInput" placeholder="The Power&#10;Dune&#10;Atomic Habits&#10;..."></textarea>
+    <div class="hint">One book per line — title is enough, author is optional.</div>
+    <button class="btn-primary" id="compareBtn">Compare against the shelf</button>
+    <div class="status" id="compareStatus"></div>
+  </div>
 
-    <!-- Shelf selector -->
-    <section class="card">
-      <label for="shelfSelect">Shelf</label>
-      <select id="shelfSelect">
-        <option value="">-- Select a shelf --</option>
-      </select>
-    </section>
+  <!-- RESULTS -->
+  <div id="resultsCard" style="display:none;">
+    <div class="summary">
+      <div class="stat found"><div class="n" id="foundCount">0</div><div class="l">In place</div></div>
+      <div class="stat misplaced"><div class="n" id="misplacedCount">0</div><div class="l">Misplaced</div></div>
+      <div class="stat missing"><div class="n" id="missingCount">0</div><div class="l">Missing</div></div>
+    </div>
+    <div id="results"></div>
+  </div>
 
-    <!-- Expected order editor -->
-    <section class="card">
-      <h2>Expected Order</h2>
-      <p class="hint">One book title per line, in the correct left-to-right shelf order.</p>
-      <textarea id="expectedOrderInput" rows="8" placeholder="Enter expected book titles, one per line..."></textarea>
-      <button id="saveExpectedBtn" class="btn btn-primary">💾 Save Expected Order</button>
-      <p id="saveStatus" class="status-msg"></p>
-    </section>
+  <footer>READS FROM FIREBASE RTDB · SAME "BOOKS" RECORDS AS THE SCANNER</footer>
+</div>
 
-    <!-- Latest scan info -->
-    <section class="card">
-      <h2>Latest Scan</h2>
-      <p id="lastScanTime" class="hint">No scan loaded yet.</p>
-    </section>
-
-    <!-- Comparison results -->
-    <section class="card">
-      <h2>Comparison Result</h2>
-      <div id="summaryBox" class="summary-box" hidden></div>
-      <table id="comparisonTable" class="comparison-table" hidden>
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Expected</th>
-            <th>Detected</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody id="comparisonBody"></tbody>
-      </table>
-      <p id="noDataMsg" class="hint">Select a shelf with both an expected order and a scan to see results.</p>
-    </section>
-
-  </main>
-
-  <footer class="app-footer">
-    <p>VisionShelf Dashboard &mdash; reads live data from Firebase Realtime Database</p>
-  </footer>
-
-  <!-- Firebase compat SDKs -->
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-
-  <script src="script.js"></script>
+<script src="script.js"></script>
 </body>
 </html>
