@@ -17,287 +17,178 @@ const firebaseConfig = {
   storageBucket: "trackmybook.firebasestorage.app",
   messagingSenderId: "561847963917",
   appId: "1:561847963917:web:add60ae662cc995da32044",
-  measurementId: "G-1RDVB9HLF4"
+  //measurementId: "G-1RDVB9HLF4"
+};
 
 
 firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
 const db = firebase.database();
 
-// ----------------------------------------------------------
-// 2. DOM REFERENCES
-// ----------------------------------------------------------
-const shelfSelect = document.getElementById("shelfSelect");
-const expectedOrderInput = document.getElementById("expectedOrderInput");
-const saveExpectedBtn = document.getElementById("saveExpectedBtn");
-const saveStatus = document.getElementById("saveStatus");
-
-const lastScanTime = document.getElementById("lastScanTime");
-const summaryBox = document.getElementById("summaryBox");
-const comparisonTable = document.getElementById("comparisonTable");
-const comparisonBody = document.getElementById("comparisonBody");
-const noDataMsg = document.getElementById("noDataMsg");
-
-// Keeps track of the currently selected shelf and its live data
-let currentShelf = null;
-let currentExpectedOrder = [];
-let currentScanTitles = [];
-let scanListenerRef = null;
-let expectedListenerRef = null;
-
-// ----------------------------------------------------------
-// 3. LOAD THE LIST OF KNOWN SHELVES (populates the dropdown)
-// ----------------------------------------------------------
-db.ref("shelves").on("value", (snapshot) => {
-  const shelvesData = snapshot.val() || {};
-  const shelfNames = Object.keys(shelvesData);
-
-  // Preserve current selection if possible while refreshing options
-  const previouslySelected = shelfSelect.value;
-  shelfSelect.innerHTML = '<option value="">-- Select a shelf --</option>';
-
-  shelfNames.forEach((name) => {
-    const opt = document.createElement("option");
-    opt.value = name;
-    opt.textContent = name;
-    shelfSelect.appendChild(opt);
-  });
-
-  if (shelfNames.includes(previouslySelected)) {
-    shelfSelect.value = previouslySelected;
-  }
+auth.signInAnonymously().catch((err) => {
+  console.error("Anonymous auth failed:", err);
+  setStatus(compareStatus, "Auth failed — check Firebase console has Anonymous sign-in enabled.", true);
 });
 
-// ----------------------------------------------------------
-// 4. HANDLE SHELF SELECTION
-// ----------------------------------------------------------
-shelfSelect.addEventListener("change", () => {
-  currentShelf = shelfSelect.value;
+/* ---------------------------------------------------------------
+   ELEMENTS
+--------------------------------------------------------------- */
+const orderInput    = document.getElementById('orderInput');
+const compareBtn    = document.getElementById('compareBtn');
+const compareStatus = document.getElementById('compareStatus');
+const resultsCard   = document.getElementById('resultsCard');
+const results       = document.getElementById('results');
+const foundCount    = document.getElementById('foundCount');
+const misplacedCount = document.getElementById('misplacedCount');
+const missingCount  = document.getElementById('missingCount');
 
-  // Detach old listeners before attaching new ones (avoid leaks / stale data)
-  if (expectedListenerRef) expectedListenerRef.off();
-  if (scanListenerRef) scanListenerRef.off();
+/* ---------------------------------------------------------------
+   WORD MATCHING
+   Comparison is deliberately loose: if even one meaningful word
+   from an expected line (e.g. "Power" from "The Power") shows up
+   anywhere in a scanned book's title/author/ISBN/raw OCR text,
+   that book counts as found. This tolerates OCR mistakes and
+   partial or reordered titles.
+--------------------------------------------------------------- */
+const STOPWORDS = new Set([
+  'the','a','an','of','and','or','to','in','on','for','by','with',
+  'is','are','was','were','book','books','novel','vol','volume','part','series'
+]);
 
-  if (!currentShelf) {
-    resetView();
-    return;
-  }
-
-  listenForExpectedOrder(currentShelf);
-  listenForLatestScan(currentShelf);
-});
-
-// ----------------------------------------------------------
-// 5. EXPECTED ORDER: LIVE LISTENER + SAVE
-// ----------------------------------------------------------
-function listenForExpectedOrder(shelfName) {
-  expectedListenerRef = db.ref(`shelves/${shelfName}/expectedOrder`);
-  expectedListenerRef.on("value", (snapshot) => {
-    const data = snapshot.val() || [];
-    currentExpectedOrder = Array.isArray(data) ? data : Object.values(data);
-    expectedOrderInput.value = currentExpectedOrder.join("\n");
-    runComparison();
-  });
+function extractWords(text) {
+  return (String(text || '').toLowerCase().match(/[a-z0-9']+/g)) || [];
 }
 
-saveExpectedBtn.addEventListener("click", async () => {
-  if (!currentShelf) {
-    saveStatus.textContent = "Select a shelf first.";
-    saveStatus.className = "status-msg error";
+function significantWords(line) {
+  const words = extractWords(line).filter(w => w.length >= 3 && !STOPWORDS.has(w));
+  return words.length ? words : extractWords(line); // fall back rather than match nothing
+}
+
+/* ---------------------------------------------------------------
+   COMPARE
+--------------------------------------------------------------- */
+compareBtn.addEventListener('click', async () => {
+  const lines = orderInput.value.split('\n').map(l => l.trim()).filter(Boolean);
+  if (!lines.length) {
+    setStatus(compareStatus, "Type at least one book title first.", true);
     return;
   }
 
-  // Clean up the textarea input into a plain array, same rules as OCR cleanup:
-  // trim whitespace, collapse inner spaces, drop empty lines.
-  const cleanedList = expectedOrderInput.value
-    .split("\n")
-    .map((line) => line.trim().replace(/\s+/g, " "))
-    .filter((line) => line.length > 0);
+  compareBtn.disabled = true;
+  setStatus(compareStatus, "Reading the shelf…");
+  results.innerHTML = '';
+  resultsCard.style.display = 'none';
 
+  let snapshot;
   try {
-    await db.ref(`shelves/${currentShelf}/expectedOrder`).set(cleanedList);
-    saveStatus.textContent = `Saved ${cleanedList.length} titles as the expected order ✅`;
-    saveStatus.className = "status-msg success";
+    snapshot = await db.ref('books').once('value');
   } catch (err) {
-    console.error("Failed to save expected order:", err);
-    saveStatus.textContent = "Failed to save. Check your Firebase connection.";
-    saveStatus.className = "status-msg error";
+    console.error(err);
+    setStatus(compareStatus, "Couldn't reach the database — check your Firebase config and rules.", true);
+    compareBtn.disabled = false;
+    return;
   }
-});
 
-// ----------------------------------------------------------
-// 6. LATEST SCAN: LIVE LISTENER
-// ----------------------------------------------------------
-function listenForLatestScan(shelfName) {
-  // Only need the single most recent scan, ordered by Firebase's push timestamp
-  scanListenerRef = db
-    .ref(`shelves/${shelfName}/scans`)
-    .orderByChild("timestamp")
-    .limitToLast(1);
+  const raw = snapshot.val() || {};
+  // Scan order stands in for physical shelf order — earliest scannedAt is leftmost.
+  const shelfBooks = Object.entries(raw)
+    .map(([key, record]) => {
+      const combined = [record.title, record.author, record.isbn, record.rawText].join(' ');
+      return {
+        key,
+        title: record.title || '(untitled scan)',
+        scannedAt: typeof record.scannedAt === 'number' ? record.scannedAt : 0,
+        wordSet: new Set(extractWords(combined))
+      };
+    })
+    .sort((a, b) => a.scannedAt - b.scannedAt);
 
-  scanListenerRef.on("value", (snapshot) => {
-    const scans = snapshot.val();
+  shelfBooks.forEach((book, idx) => { book.position = idx; }); // 0-based actual position
 
-    if (!scans) {
-      currentScanTitles = [];
-      lastScanTime.textContent = "No scans uploaded yet for this shelf.";
-      runComparison();
+  if (!shelfBooks.length) {
+    setStatus(compareStatus, "The shelf is empty — nothing has been uploaded yet.", true);
+    compareBtn.disabled = false;
+    return;
+  }
+
+  let correct = 0, misplaced = 0, missing = 0;
+  results.innerHTML = '';
+  const usedKeys = new Set(); // each scanned book can only satisfy one expected line
+
+  lines.forEach((line, expectedIndex) => {
+    const words = significantWords(line);
+    let match = null;
+    let matchedWord = null;
+
+    outer:
+    for (const word of words) {
+      for (const book of shelfBooks) {
+        if (usedKeys.has(book.key)) continue;
+        if (book.wordSet.has(word)) {
+          match = book;
+          matchedWord = word;
+          break outer;
+        }
+      }
+    }
+
+    const row = document.createElement('div');
+
+    if (!match) {
+      missing++;
+      row.className = 'result-row missing';
+      row.innerHTML = `
+        <div class="result-icon">✕</div>
+        <div class="result-body">
+          <div class="result-title">${escapeHtml(line)}</div>
+          <div class="result-detail miss">Missing — no scanned book matches any word in this title</div>
+        </div>`;
+      results.appendChild(row);
       return;
     }
 
-    // limitToLast(1) still returns an object keyed by push-id; grab the single entry
-    const latestScan = Object.values(scans)[0];
-    currentScanTitles = latestScan.titles || [];
+    usedKeys.add(match.key);
 
-    const scanDate = new Date(latestScan.timestamp);
-    lastScanTime.textContent = `Last scanned: ${scanDate.toLocaleString()} (${currentScanTitles.length} titles detected)`;
-
-    runComparison();
-  });
-}
-
-// ----------------------------------------------------------
-// 7. TEXT NORMALIZATION + FUZZY SIMILARITY
-// ----------------------------------------------------------
-// OCR output is noisy, so we don't require exact string equality.
-// Titles are normalized (lowercase, punctuation stripped) and compared
-// using a Levenshtein-based similarity ratio.
-
-function normalize(str) {
-  return str
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, "") // strip punctuation/symbols
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function levenshteinDistance(a, b) {
-  const rows = a.length + 1;
-  const cols = b.length + 1;
-  const matrix = Array.from({ length: rows }, () => new Array(cols).fill(0));
-
-  for (let i = 0; i < rows; i++) matrix[i][0] = i;
-  for (let j = 0; j < cols; j++) matrix[0][j] = j;
-
-  for (let i = 1; i < rows; i++) {
-    for (let j = 1; j < cols; j++) {
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      matrix[i][j] = Math.min(
-        matrix[i - 1][j] + 1,      // deletion
-        matrix[i][j - 1] + 1,      // insertion
-        matrix[i - 1][j - 1] + cost // substitution
-      );
+    if (match.position === expectedIndex) {
+      correct++;
+      row.className = 'result-row found';
+      row.innerHTML = `
+        <div class="result-icon">✓</div>
+        <div class="result-body">
+          <div class="result-title">${escapeHtml(line)}</div>
+          <div class="result-detail">In place · matched <b>“${escapeHtml(matchedWord)}”</b> in “${escapeHtml(match.title)}”</div>
+        </div>`;
+    } else {
+      misplaced++;
+      row.className = 'result-row misplaced';
+      row.innerHTML = `
+        <div class="result-icon">↕</div>
+        <div class="result-body">
+          <div class="result-title">${escapeHtml(line)}</div>
+          <div class="result-detail">Misplaced · expected position <b>${expectedIndex + 1}</b>, found at position <b>${match.position + 1}</b> on the shelf (matched “${escapeHtml(matchedWord)}” in “${escapeHtml(match.title)}”)</div>
+        </div>`;
     }
-  }
-  return matrix[rows - 1][cols - 1];
+    results.appendChild(row);
+  });
+
+  foundCount.textContent = correct;
+  misplacedCount.textContent = misplaced;
+  missingCount.textContent = missing;
+  resultsCard.style.display = 'block';
+  setStatus(compareStatus, `Checked ${lines.length} book${lines.length > 1 ? 's' : ''} against ${shelfBooks.length} on the shelf.`);
+  compareBtn.disabled = false;
+});
+
+/* ---------------------------------------------------------------
+   HELPERS
+--------------------------------------------------------------- */
+function setStatus(el, msg, isError = false) {
+  el.textContent = msg;
+  el.classList.toggle('err', isError);
 }
 
-// Returns a similarity score between 0 (completely different) and 1 (identical)
-function similarity(strA, strB) {
-  const a = normalize(strA);
-  const b = normalize(strB);
-  if (a.length === 0 && b.length === 0) return 1;
-
-  const distance = levenshteinDistance(a, b);
-  const maxLen = Math.max(a.length, b.length);
-  return maxLen === 0 ? 1 : 1 - distance / maxLen;
-}
-
-// Titles are considered "the same book" if similarity meets this threshold.
-// Tune this if OCR quality is especially poor/good for your camera setup.
-const MATCH_THRESHOLD = 0.75;
-
-// ----------------------------------------------------------
-// 8. RUN THE POSITION-BY-POSITION COMPARISON
-// ----------------------------------------------------------
-function runComparison() {
-  const hasExpected = currentExpectedOrder.length > 0;
-  const hasScan = currentScanTitles.length > 0;
-
-  if (!hasExpected || !hasScan) {
-    comparisonTable.hidden = true;
-    summaryBox.hidden = true;
-    noDataMsg.hidden = false;
-    noDataMsg.textContent = !hasExpected
-      ? "Add an expected order for this shelf to run a comparison."
-      : "No scan data available yet for this shelf.";
-    return;
-  }
-
-  noDataMsg.hidden = true;
-  comparisonTable.hidden = false;
-  summaryBox.hidden = false;
-
-  // Compare index-by-index across the longer of the two lists, so extra
-  // or missing items at the end still show up as mismatches.
-  const rowCount = Math.max(currentExpectedOrder.length, currentScanTitles.length);
-  comparisonBody.innerHTML = "";
-
-  let correctCount = 0;
-  let mismatchCount = 0;
-
-  for (let i = 0; i < rowCount; i++) {
-    const expectedTitle = currentExpectedOrder[i] || "(none — shelf is short)";
-    const detectedTitle = currentScanTitles[i] || "(none — missing/misplaced)";
-
-    const isMatch =
-      currentExpectedOrder[i] && currentScanTitles[i]
-        ? similarity(currentExpectedOrder[i], currentScanTitles[i]) >= MATCH_THRESHOLD
-        : false;
-
-    if (isMatch) correctCount++;
-    else mismatchCount++;
-
-    const row = document.createElement("tr");
-    row.className = isMatch ? "row-ok" : "row-mismatch";
-    row.innerHTML = `
-      <td>${i + 1}</td>
-      <td>${escapeHtml(expectedTitle)}</td>
-      <td>${escapeHtml(detectedTitle)}</td>
-      <td class="${isMatch ? "status-ok" : "status-mismatch"}">
-        ${isMatch ? "✅ Correct" : "❌ Misplaced"}
-      </td>
-    `;
-    comparisonBody.appendChild(row);
-  }
-
-  renderSummary(correctCount, mismatchCount);
-}
-
-// ----------------------------------------------------------
-// 9. SUMMARY BOX
-// ----------------------------------------------------------
-function renderSummary(correctCount, mismatchCount) {
-  summaryBox.innerHTML = `
-    <div class="summary-item">
-      <span class="count" style="color:#059669">${correctCount}</span>
-      <span class="label">In place</span>
-    </div>
-    <div class="summary-item">
-      <span class="count" style="color:#dc2626">${mismatchCount}</span>
-      <span class="label">Misplaced</span>
-    </div>
-  `;
-}
-
-// ----------------------------------------------------------
-// 10. RESET VIEW (no shelf selected)
-// ----------------------------------------------------------
-function resetView() {
-  currentExpectedOrder = [];
-  currentScanTitles = [];
-  expectedOrderInput.value = "";
-  lastScanTime.textContent = "No scan loaded yet.";
-  comparisonTable.hidden = true;
-  summaryBox.hidden = true;
-  noDataMsg.hidden = false;
-  noDataMsg.textContent = "Select a shelf with both an expected order and a scan to see results.";
-}
-
-// ----------------------------------------------------------
-// 11. UTILITY: ESCAPE HTML TO AVOID INJECTION FROM OCR TEXT
-// ----------------------------------------------------------
 function escapeHtml(str) {
-  const div = document.createElement("div");
+  const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
 }
